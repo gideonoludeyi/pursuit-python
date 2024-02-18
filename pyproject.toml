@@ -1,0 +1,24 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "pursuit"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "gideonoludeyi", email = "49620086+gideonoludeyi@users.noreply.github.com"},
+    {name = "Kelvin229", email = "55924606+Kelvin229@users.noreply.github.com"},
+]
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "deap>=1.4.1, <2.0.0",
+]
+
+[project.scripts]
+pursuit = "pursuit:main"
+
+[tool.pdm]
+distribution = true
+
