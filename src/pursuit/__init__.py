@@ -10,14 +10,6 @@ from deap import algorithms, base, creator, gp, tools
 
 
 class AntSimulator:
-    ant_icons = {
-        "^": 0 - 1j,  # up
-        ">": 1 + 0j,  # right
-        "v": 0 + 1j,  # down
-        "<": -1 + 0j,  # left
-    }
-    food_icon = "#"
-
     def __init__(
         self,
         nrows: int,
@@ -93,42 +85,48 @@ class AntSimulator:
         ctx.reset()
         return n_eaten, moves
 
-    @classmethod
-    def parse_file(
-        cls, filepath: str | os.PathLike, *, max_moves: int
-    ) -> "AntSimulator":
-        with open(filepath, "r") as file:
-            return cls.parse_str(file.read(), max_moves=max_moves)
 
-    @classmethod
-    def parse_str(cls, text: str, *, max_moves: int) -> "AntSimulator":
-        assert (
-            sum(map(text.count, cls.ant_icons.keys())) == 1
-        ), f"exactly one of {list(cls.ant_icons.keys())} must be present in the environment"
-        grid = [list(line) for line in map(str.strip, text.split("\n")) if line != ""]
-        nrows = len(grid)
-        ncols = len(grid[0]) if nrows > 0 else 0
-        start_pos = (0, 0)
-        start_dir = cls.ant_icons[">"]
-        for row, col in itertools.product(range(nrows), range(ncols)):
-            if grid[row][col] in cls.ant_icons.keys():
-                start_pos = (row, col)
-                start_dir = cls.ant_icons[grid[row][col]]
-                break
-        foods = [
-            (row, col)
-            for row in range(nrows)
-            for col in range(ncols)
-            if grid[row][col] == cls.food_icon
-        ]
-        return cls(
-            nrows=nrows,
-            ncols=ncols,
-            startpos=start_pos,
-            startdir=start_dir,
-            foods=foods,
-            max_moves=max_moves,
-        )
+def parse_str(text: str, *, max_moves: int):
+    ant_icons = {
+        "^": 0 - 1j,  # up
+        ">": 1 + 0j,  # right
+        "v": 0 + 1j,  # down
+        "<": -1 + 0j,  # left
+    }
+    food_icon = "#"
+
+    assert (
+        sum(map(text.count, ant_icons.keys())) == 1
+    ), f"exactly one of {list(ant_icons.keys())} must be present in the environment"
+    grid = [list(line) for line in map(str.strip, text.split("\n")) if line != ""]
+    nrows = len(grid)
+    ncols = len(grid[0]) if nrows > 0 else 0
+    start_pos = (0, 0)
+    start_dir = ant_icons[">"]
+    for row, col in itertools.product(range(nrows), range(ncols)):
+        if grid[row][col] in ant_icons.keys():
+            start_pos = (row, col)
+            start_dir = ant_icons[grid[row][col]]
+            break
+    foods = [
+        (row, col)
+        for row in range(nrows)
+        for col in range(ncols)
+        if grid[row][col] == food_icon
+    ]
+    return dict(
+        nrows=nrows,
+        ncols=ncols,
+        startpos=start_pos,
+        startdir=start_dir,
+        foods=foods,
+        max_moves=max_moves,
+    )
+
+
+def parse_file(filepath: str | os.PathLike, *, max_moves: int):
+    with open(filepath, "r") as file:
+        return parse_str(file.read(), max_moves=max_moves)
 
 
 class Context:
@@ -141,24 +139,26 @@ class Context:
         foods: list[tuple[int, int]],
         *,
         max_moves: int = 600,
-        rng: random.Random = random.Random(123),
+        seed=None,
     ) -> None:
         self.nrows = nrows
         self.ncols = ncols
-        self.foods = foods
+        self.original_foods = list(foods)
+        self.foods = list(self.original_foods)
         self.eaten_foods = []
-        self.rng = rng
+        self.seed = seed
+        self.rng = random.Random(self.seed)
 
     def _predator_nearby(self, antloc: tuple[int, int], foodloc: tuple[int, int]):
         manhdist = abs(antloc[0] - foodloc[0]) + abs(antloc[1] - foodloc[1])
-        return manhdist <= 3
+        return manhdist <= 1
 
     def update(self, ant: "AntSimulator"):
         # dirs = self.rng.choices([(1, 0), (0, 1), (-1, 0), (0, -1)], k=len(self.foods))
         for i in range(len(self.foods)):
             if (
                 self._predator_nearby(ant.pos, self.foods[i])
-                and self.rng.random() <= 0.6
+                and self.rng.random() <= 0.5
             ):
                 dir = self.rng.choice([(1, 0), (0, 1), (-1, 0), (0, -1)])
                 self.foods[i] = (
@@ -171,8 +171,9 @@ class Context:
         self.eaten_foods.append(loc)
 
     def reset(self):
-        self.foods = self.foods + self.eaten_foods
+        self.foods = list(self.original_foods)
         self.eaten_foods = []
+        self.rng = random.Random(self.seed)
 
 
 def progn(*outs, ctx):
@@ -292,7 +293,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "-g",
-    "--generatinos",
+    "--generations",
     dest="n_generations",
     type=int,
     required=False,
@@ -308,7 +309,12 @@ parser.add_argument(
     "--max-moves", dest="max_moves", type=int, required=False, default=600
 )
 parser.add_argument(
-    "--tournsize", dest="tournsize", type=int, required=False, default=3
+    "--tournsize",
+    dest="tournsize",
+    type=int,
+    required=False,
+    default=None,
+    help="the number of individuals to compete in tournament [default: none - uses roulette wheel instead]",
 )
 parser.add_argument(
     "-s", "--seed", dest="random_seed", type=int, required=False, default=123
@@ -319,13 +325,22 @@ def main() -> int:
     args = parser.parse_args()
     random.seed(args.random_seed)
 
-    antsim = AntSimulator.parse_file("examples/santafe.txt", max_moves=args.max_moves)
+    config = parse_file("examples/santafe.txt", max_moves=args.max_moves)
     ctx = Context(
-        ncols=antsim.ncols,
-        nrows=antsim.nrows,
-        startpos=antsim.startpos,
-        startdir=antsim.startdir,
-        foods=antsim.foods,
+        ncols=config["ncols"],
+        nrows=config["nrows"],
+        startpos=config["startpos"],
+        startdir=config["startdir"],
+        foods=config["foods"],
+        max_moves=args.max_moves,
+        seed=args.random_seed,
+    )
+    antsim = AntSimulator(
+        ncols=config["ncols"],
+        nrows=config["nrows"],
+        startpos=config["startpos"],
+        startdir=config["startdir"],
+        foods=config["foods"],
         max_moves=args.max_moves,
     )
 
@@ -340,7 +355,10 @@ def main() -> int:
     )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     toolbox.register("evaluate", eval_artificial_ant, pset=pset, antsim=antsim, ctx=ctx)
-    toolbox.register("select", tools.selTournament, tournsize=args.tournsize)
+    if args.tournsize is not None:
+        toolbox.register("select", tools.selTournament, tournsize=args.tournsize)
+    else:
+        toolbox.register("select", tools.selRoulette)
     toolbox.register("mate", gp.cxOnePoint)
     toolbox.register("expr_mut", gp.genHalfAndHalf, min_=3, max_=7)
     toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
@@ -365,7 +383,7 @@ def main() -> int:
     )
 
     print(f"Best Individual: fitness={hof[0].fitness.values}, height={hof[0].height}")
-    with open("best.ind", "w") as f:
+    with open("tmp/best.ind", "w") as f:
         f.write(str(hof[0]))
 
     return 0
