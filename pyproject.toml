@@ -18,7 +18,7 @@ dependencies = [
 
 [project.scripts]
 pursuit = "pursuit:main"
-view = "pursuit.view:main"
+viz = "pursuit.view:main"
 execute = "pursuit.execute:main"
 
 [tool.pdm]

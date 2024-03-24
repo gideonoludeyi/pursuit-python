@@ -27,6 +27,6 @@ $ execute -i=tmp/best-001.ind -o=tmp/trace-001.json
 
 5. Visualize trace
 ```sh
-$ view -i=tmp/trace-001.json --mapfile=examples/santafe.txt
+$ viz -i=tmp/trace-001.json --mapfile=examples/santafe.txt
 ```
 
