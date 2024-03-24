@@ -14,12 +14,12 @@ requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
     "deap>=1.4.1, <2.0.0",
-    "kivy[base]>=2.3.0",
-    "manim>=0.14.0",
 ]
 
 [project.scripts]
 pursuit = "pursuit:main"
+view = "pursuit.view:main"
+execute = "pursuit.execute:main"
 
 [tool.pdm]
 distribution = true

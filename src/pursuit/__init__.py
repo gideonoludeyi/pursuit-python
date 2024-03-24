@@ -8,85 +8,10 @@ from functools import partial
 import numpy as np
 from deap import algorithms, base, creator, gp, tools
 
-
-class AntSimulator:
-    def __init__(
-        self,
-        nrows: int,
-        ncols: int,
-        startpos: tuple[int, int],
-        startdir: complex,
-        foods: list[tuple[int, int]],
-        *,
-        max_moves: int,
-    ) -> None:
-        self.nrows = nrows
-        self.ncols = ncols
-        self.startpos = startpos
-        self.startdir = startdir
-        self.max_moves = max_moves
-        self.pos = startpos
-        self.dir = startdir
-        self.moves = []
-        self.foods = foods
-
-    def left(self, *, ctx: "Context"):
-        if len(self.moves) >= self.max_moves:
-            return
-        self.dir *= -1j
-        self.moves.append("L")
-        ctx.update(self)
-
-    def right(self, *, ctx: "Context"):
-        if len(self.moves) >= self.max_moves:
-            return
-        self.dir *= 1j
-        self.moves.append("R")
-        ctx.update(self)
-
-    def forward(self, *, ctx: "Context"):
-        if len(self.moves) >= self.max_moves:
-            return
-        self.pos = (
-            (self.pos[0] + int(self.dir.imag)) % self.nrows,
-            (self.pos[1] + int(self.dir.real)) % self.ncols,
-        )
-        if self.pos in ctx.foods:
-            ctx.eat(self.pos)
-        self.moves.append("F")
-        ctx.update(self)
-
-    def _has_food_ahead(self, ctx: "Context") -> bool:
-        next_pos = (
-            (self.pos[0] + int(self.dir.imag)) % self.nrows,
-            (self.pos[1] + int(self.dir.real)) % self.ncols,
-        )
-        return next_pos in ctx.foods
-
-    def if_food_ahead(self, out1, out2, *, ctx: "Context"):
-        if self._has_food_ahead(ctx):
-            out1(ctx=ctx)
-        else:
-            out2(ctx=ctx)
-
-    def _reset(self):
-        self.pos = self.startpos
-        self.dir = self.startdir
-        self.moves = []
-
-    def run(self, routine, ctx: "Context"):
-        ctx.reset()
-        self._reset()
-        while len(ctx.foods) > 0 and len(self.moves) < self.max_moves:
-            routine(ctx=ctx)
-        n_eaten = len(ctx.eaten_foods)
-        moves = self.moves
-        self._reset()
-        ctx.reset()
-        return n_eaten, moves
+from .simulator import AntSimulator, Context
 
 
-def parse_str(text: str, *, max_moves: int):
+def parse_str(text: str):
     ant_icons = {
         "^": 0 - 1j,  # up
         ">": 1 + 0j,  # right
@@ -120,60 +45,12 @@ def parse_str(text: str, *, max_moves: int):
         startpos=start_pos,
         startdir=start_dir,
         foods=foods,
-        max_moves=max_moves,
     )
 
 
-def parse_file(filepath: str | os.PathLike, *, max_moves: int):
+def parse_file(filepath: str | os.PathLike):
     with open(filepath, "r") as file:
-        return parse_str(file.read(), max_moves=max_moves)
-
-
-class Context:
-    def __init__(
-        self,
-        nrows: int,
-        ncols: int,
-        startpos: tuple[int, int],
-        startdir: complex,
-        foods: list[tuple[int, int]],
-        *,
-        max_moves: int = 600,
-        seed=None,
-    ) -> None:
-        self.nrows = nrows
-        self.ncols = ncols
-        self.original_foods = list(foods)
-        self.foods = list(self.original_foods)
-        self.eaten_foods = []
-        self.seed = seed
-        self.rng = random.Random(self.seed)
-
-    def _predator_nearby(self, antloc: tuple[int, int], foodloc: tuple[int, int]):
-        manhdist = abs(antloc[0] - foodloc[0]) + abs(antloc[1] - foodloc[1])
-        return manhdist <= 1
-
-    def update(self, ant: "AntSimulator"):
-        # dirs = self.rng.choices([(1, 0), (0, 1), (-1, 0), (0, -1)], k=len(self.foods))
-        for i in range(len(self.foods)):
-            if (
-                self._predator_nearby(ant.pos, self.foods[i])
-                and self.rng.random() <= 0.5
-            ):
-                dir = self.rng.choice([(1, 0), (0, 1), (-1, 0), (0, -1)])
-                self.foods[i] = (
-                    (self.foods[i][0] + dir[0]) % self.nrows,
-                    (self.foods[i][1] + dir[1]) % self.ncols,
-                )
-
-    def eat(self, loc: tuple[int, int]):
-        self.foods.remove(loc)
-        self.eaten_foods.append(loc)
-
-    def reset(self):
-        self.foods = list(self.original_foods)
-        self.eaten_foods = []
-        self.rng = random.Random(self.seed)
+        return parse_str(file.read())
 
 
 def progn(*outs, ctx):
@@ -190,7 +67,8 @@ def eval_artificial_ant(
 ):
     routine = gp.compile(individual, pset=pset)
     n_foods = len(antsim.foods)
-    n_eaten, moves = antsim.run(routine, ctx)
+    n_eaten, moves, steps = antsim.run(routine, ctx)
+    individual.steps = steps
     if out is not None:
         out[:] = moves
     return (n_eaten / n_foods,)
@@ -219,6 +97,7 @@ def eaSimpleElitism(
     stats=None,
     halloffame=None,
     verbose=__debug__,
+    logfile=sys.stdout,
 ):
     logbook = tools.Logbook()
     logbook.header = ["gen", "nevals"] + (stats.fields if stats else [])
@@ -235,7 +114,7 @@ def eaSimpleElitism(
     record = stats.compile(population) if stats else {}
     logbook.record(gen=0, nevals=len(invalid_ind), **record)
     if verbose:
-        print(logbook.stream)
+        print(logbook.stream, file=logfile)
 
     # Begin the generational process
     for gen in range(1, ngen + 1):
@@ -269,12 +148,29 @@ def eaSimpleElitism(
         record = stats.compile(population) if stats else {}
         logbook.record(gen=gen, nevals=len(invalid_ind), **record)
         if verbose:
-            print(logbook.stream)
+            print(logbook.stream, file=logfile)
 
     return population, logbook
 
 
 parser = argparse.ArgumentParser(prog="Pursuit")
+parser.add_argument(
+    "-o",
+    "--output",
+    dest="outputfile",
+    type=argparse.FileType("w"),
+    default=sys.stdout,
+    required=False,
+    help="file which to write the best solution tree",
+)
+parser.add_argument(
+    "--logfile",
+    dest="logfile",
+    type=argparse.FileType("w"),
+    default=sys.stderr,
+    required=False,
+    help="file which to write the training logs",
+)
 parser.add_argument(
     "-c",
     "--crossover-rate",
@@ -297,13 +193,13 @@ parser.add_argument(
     dest="n_generations",
     type=int,
     required=False,
-    default=40,
+    default=50,
 )
 parser.add_argument(
     "-e", "--elites", dest="n_elites", type=int, required=False, default=0
 )
 parser.add_argument(
-    "-p", "--popsize", dest="popsize", type=int, required=False, default=500
+    "-p", "--popsize", dest="popsize", type=int, required=False, default=100
 )
 parser.add_argument(
     "--max-moves", dest="max_moves", type=int, required=False, default=600
@@ -325,14 +221,11 @@ def main() -> int:
     args = parser.parse_args()
     random.seed(args.random_seed)
 
-    config = parse_file("examples/santafe.txt", max_moves=args.max_moves)
+    config = parse_file("examples/santafe.txt")
     ctx = Context(
         ncols=config["ncols"],
         nrows=config["nrows"],
-        startpos=config["startpos"],
-        startdir=config["startdir"],
         foods=config["foods"],
-        max_moves=args.max_moves,
         seed=args.random_seed,
     )
     antsim = AntSimulator(
@@ -347,7 +240,7 @@ def main() -> int:
     pset = create_primitive_set(antsim)
 
     creator.create("Fitness", base.Fitness, weights=(1.0,))
-    creator.create("Individual", gp.PrimitiveTree, fitness=creator.Fitness)
+    creator.create("Individual", gp.PrimitiveTree, fitness=creator.Fitness, steps=list)
     toolbox = base.Toolbox()
     toolbox.register("expr_init", gp.genFull, pset=pset, min_=3, max_=7)
     toolbox.register(
@@ -362,6 +255,8 @@ def main() -> int:
     toolbox.register("mate", gp.cxOnePoint)
     toolbox.register("expr_mut", gp.genHalfAndHalf, min_=3, max_=7)
     toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
+    toolbox.decorate("mate", gp.staticLimit(lambda ind: ind.height, 17))
+    toolbox.decorate("mutate", gp.staticLimit(lambda ind: ind.height, 17))
 
     pop = toolbox.population(n=args.popsize)
     hof = tools.HallOfFame(1)
@@ -380,11 +275,13 @@ def main() -> int:
         stats,
         hof,
         verbose=True,
+        logfile=args.logfile,
     )
 
     print(f"Best Individual: fitness={hof[0].fitness.values}, height={hof[0].height}")
-    with open("tmp/best.ind", "w") as f:
-        f.write(str(hof[0]))
+    best = hof[0]
+    with args.outputfile as f:
+        f.write(str(best))
 
     return 0
 
