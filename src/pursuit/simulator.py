@@ -1,3 +1,24 @@
+"""
+Defines the core simulation logic for the predator-prey environment. It includes classes for managing the simulation
+context and executing the behaviors of both predators and prey within a defined space.
+
+Classes:
+- Context: Manages the simulation environment, including prey positions and the historical steps of the
+simulation.
+- PredatorSimulator: Simulates the behavior of a predator within the environment,
+tracking its position, direction, and the actions it takes.
+
+Key Functions within PredatorSimulator:
+- left, right, forward: Basic movement actions available to the predator.
+- _has_prey_ahead, if_prey_ahead, if_prey_left, if_prey_right, if_prey_behind: Decision-making functions evaluating the
+presence of prey (prey) relative to the predator's position.
+- run: Executes a given strategy within the simulation context, assessing its effectiveness.
+
+This module is central to running simulations and evaluating the evolutionary outcomes of genetic programming strategies
+in predator-prey dynamics.
+"""
+
+
 import random
 
 
@@ -6,64 +27,64 @@ class Context:
         self,
         nrows: int,
         ncols: int,
-        foods: list[tuple[int, int]],
+        preys: list[tuple[int, int]],
         *,
         seed=None,
     ) -> None:
         self.nrows = nrows
         self.ncols = ncols
-        self.original_foods = list(foods)
-        self.foods = list(self.original_foods)
-        self.eaten_foods = []
+        self.original_preys = list(preys)
+        self.preys = list(self.original_preys)
+        self.eaten_preys = []
         self.seed = seed
         self.rng = random.Random(self.seed)
         self.steps = []
 
-    def _predator_nearby(self, antloc: tuple[int, int], foodloc: tuple[int, int]):
-        manhdist = abs(antloc[0] - foodloc[0]) + abs(antloc[1] - foodloc[1])
+    def _predator_nearby(self, predatorloc: tuple[int, int], preyloc: tuple[int, int]):
+        manhdist = abs(predatorloc[0] - preyloc[0]) + abs(predatorloc[1] - preyloc[1])
         return manhdist <= 1
 
-    def update(self, ant: "AntSimulator"):
-        for i in range(len(self.foods)):
+    def update(self, predator: "PredatorSimulator"):
+        for i in range(len(self.preys)):
             if (
-                self._predator_nearby(ant.pos, self.foods[i])
+                self._predator_nearby(predator.pos, self.preys[i])
                 and self.rng.random() <= 0.5
             ):
                 dir = self.rng.choice([(1, 0), (0, 1), (-1, 0), (0, -1)])
                 newloc = (
-                    (self.foods[i][0] + dir[0]) % self.nrows,
-                    (self.foods[i][1] + dir[1]) % self.ncols,
+                    (self.preys[i][0] + dir[0]) % self.nrows,
+                    (self.preys[i][1] + dir[1]) % self.ncols,
                 )
-                if newloc not in self.foods:
+                if newloc not in self.preys:
                     # prevent multiple preys overlapping in the same cell
-                    self.foods[i] = newloc
+                    self.preys[i] = newloc
         self.steps.append(
             dict(
-                ant=dict(pos=ant.pos, dir=(ant.dir.real, ant.dir.imag)),
-                foods=list(self.foods),
-                eaten=list(self.eaten_foods),
+                predator=dict(pos=predator.pos, dir=(predator.dir.real, predator.dir.imag)),
+                preys=list(self.preys),
+                eaten=list(self.eaten_preys),
             )
         )
 
     def eat(self, loc: tuple[int, int]):
-        self.foods.remove(loc)
-        self.eaten_foods.append(loc)
+        self.preys.remove(loc)
+        self.eaten_preys.append(loc)
 
     def reset(self):
-        self.foods = list(self.original_foods)
-        self.eaten_foods = []
+        self.preys = list(self.original_preys)
+        self.eaten_preys = []
         self.rng = random.Random(self.seed)
         self.steps = []
 
 
-class AntSimulator:
+class PredatorSimulator:
     def __init__(
         self,
         nrows: int,
         ncols: int,
         startpos: tuple[int, int],
         startdir: complex,
-        foods: list[tuple[int, int]],
+        preys: list[tuple[int, int]],
         *,
         max_moves: int,
     ) -> None:
@@ -75,7 +96,7 @@ class AntSimulator:
         self.pos = startpos
         self.dir = startdir
         self.moves = []
-        self.foods = foods
+        self.preys = preys
 
     def left(self, *, ctx: "Context"):
         if len(self.moves) >= self.max_moves:
@@ -98,39 +119,39 @@ class AntSimulator:
             (self.pos[0] + int(self.dir.imag)) % self.nrows,
             (self.pos[1] + int(self.dir.real)) % self.ncols,
         )
-        if self.pos in ctx.foods:
+        if self.pos in ctx.preys:
             ctx.eat(self.pos)
         self.moves.append("F")
         ctx.update(self)
 
-    def _has_food_ahead(self, ctx: "Context", turn_dir: complex = 1) -> bool:
+    def _has_prey_ahead(self, ctx: "Context", turn_dir: complex = 1) -> bool:
         d = self.dir * turn_dir
         next_pos = (
             (self.pos[0] + int(d.imag)) % self.nrows,
             (self.pos[1] + int(d.real)) % self.ncols,
         )
-        return next_pos in ctx.foods
+        return next_pos in ctx.preys
 
-    def if_food_ahead(self, out1, out2, *, ctx: "Context"):
-        if self._has_food_ahead(ctx):
+    def if_prey_ahead(self, out1, out2, *, ctx: "Context"):
+        if self._has_prey_ahead(ctx):
             out1(ctx=ctx)
         else:
             out2(ctx=ctx)
 
-    def if_food_left(self, out1, out2, *, ctx: "Context"):
-        if self._has_food_ahead(ctx, turn_dir=-1j):
+    def if_prey_left(self, out1, out2, *, ctx: "Context"):
+        if self._has_prey_ahead(ctx, turn_dir=-1j):
             out1(ctx=ctx)
         else:
             out2(ctx=ctx)
 
-    def if_food_right(self, out1, out2, *, ctx: "Context"):
-        if self._has_food_ahead(ctx, turn_dir=1j):
+    def if_prey_right(self, out1, out2, *, ctx: "Context"):
+        if self._has_prey_ahead(ctx, turn_dir=1j):
             out1(ctx=ctx)
         else:
             out2(ctx=ctx)
 
-    def if_food_behind(self, out1, out2, *, ctx: "Context"):
-        if self._has_food_ahead(ctx, turn_dir=-1 + 0j):
+    def if_prey_behind(self, out1, out2, *, ctx: "Context"):
+        if self._has_prey_ahead(ctx, turn_dir=-1 + 0j):
             out1(ctx=ctx)
         else:
             out2(ctx=ctx)
@@ -143,9 +164,9 @@ class AntSimulator:
     def run(self, routine, ctx: "Context"):
         ctx.reset()
         self._reset()
-        while len(ctx.foods) > 0 and len(self.moves) < self.max_moves:
+        while len(ctx.preys) > 0 and len(self.moves) < self.max_moves:
             routine(ctx=ctx)
-        n_eaten = len(ctx.eaten_foods)
+        n_eaten = len(ctx.eaten_preys)
         moves = self.moves
         steps = ctx.steps
         self._reset()

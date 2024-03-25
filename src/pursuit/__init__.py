@@ -1,3 +1,22 @@
+"""
+This module serves as the entry point for the genetic programming simulation aimed at evolving predator behaviors in
+different environmental contexts. It leverages the DEAP library to create, evaluate, and evolve a population of
+solutions over generations.
+
+Functions:
+- parse_str(text: str): Parses environment configuration from a string.
+- parse_file(filepath: str | os.PathLike): Reads and parses environment configuration from a file.
+- progn(*outs, ctx): Executes a sequence of actions in the given context.
+- eval_artificial_predator(individual, pset, predatorsim, ctx, out=None): Evaluates the fitness of a single individual.
+- create_primitive_set(predatorsim): Creates a DEAP PrimitiveSet tailored for the predator simulation.
+- eaSimpleElitism(population, toolbox, cxpb, mutpb, nelites, ngen, stats, halloffame, verbose, logfile): An
+elitism-based evolutionary algorithm.
+- main(): The main execution function for setting up and running the genetic programming simulation.
+
+The script also defines command-line argument parsing for configuration and control of the simulation run.
+"""
+
+
 import argparse
 import itertools
 import os
@@ -8,43 +27,43 @@ from functools import partial
 import numpy as np
 from deap import algorithms, base, creator, gp, tools
 
-from .simulator import AntSimulator, Context
+from .simulator import PredatorSimulator, Context
 
 
 def parse_str(text: str):
-    ant_icons = {
+    predator_icons = {
         "^": 0 - 1j,  # up
         ">": 1 + 0j,  # right
         "v": 0 + 1j,  # down
         "<": -1 + 0j,  # left
     }
-    food_icon = "#"
+    prey_icon = "#"
 
     assert (
-        sum(map(text.count, ant_icons.keys())) == 1
-    ), f"exactly one of {list(ant_icons.keys())} must be present in the environment"
+        sum(map(text.count, predator_icons.keys())) == 1
+    ), f"exactly one of {list(predator_icons.keys())} must be present in the environment"
     grid = [list(line) for line in map(str.strip, text.split("\n")) if line != ""]
     nrows = len(grid)
     ncols = len(grid[0]) if nrows > 0 else 0
     start_pos = (0, 0)
-    start_dir = ant_icons[">"]
+    start_dir = predator_icons[">"]
     for row, col in itertools.product(range(nrows), range(ncols)):
-        if grid[row][col] in ant_icons.keys():
+        if grid[row][col] in predator_icons.keys():
             start_pos = (row, col)
-            start_dir = ant_icons[grid[row][col]]
+            start_dir = predator_icons[grid[row][col]]
             break
-    foods = [
+    preys = [
         (row, col)
         for row in range(nrows)
         for col in range(ncols)
-        if grid[row][col] == food_icon
+        if grid[row][col] == prey_icon
     ]
     return dict(
         nrows=nrows,
         ncols=ncols,
         startpos=start_pos,
         startdir=start_dir,
-        foods=foods,
+        preys=preys,
     )
 
 
@@ -58,41 +77,41 @@ def progn(*outs, ctx):
         out(ctx=ctx)
 
 
-def eval_artificial_ant(
+def eval_artificial_predator(
     individual,
     pset: gp.PrimitiveSet,
-    antsim: AntSimulator,
+    predatorsim: PredatorSimulator,
     ctx: Context,
     out: list[str] | None = None,
 ):
     routine = gp.compile(individual, pset=pset)
-    n_foods = len(antsim.foods)
-    n_eaten, moves, steps = antsim.run(routine, ctx)
+    n_preys = len(predatorsim.preys)
+    n_eaten, moves, steps = predatorsim.run(routine, ctx)
     individual.steps = steps
     if out is not None:
         out[:] = moves
-    return (n_eaten / n_foods,)
+    return (n_eaten / n_preys,)
 
 
-def create_primitive_set(antsim: AntSimulator) -> gp.PrimitiveSet:
+def create_primitive_set(predatorsim: PredatorSimulator) -> gp.PrimitiveSet:
     pset = gp.PrimitiveSet("MAIN", arity=0)
     pset.addPrimitive(
-        lambda *args: partial(antsim.if_food_ahead, *args), 2, name="ifFoodAhead"
+        lambda *args: partial(predatorsim.if_prey_ahead, *args), 2, name="ifpreyAhead"
     )
     pset.addPrimitive(
-        lambda *args: partial(antsim.if_food_left, *args), 2, name="ifFoodLeft"
+        lambda *args: partial(predatorsim.if_prey_left, *args), 2, name="ifpreyLeft"
     )
     pset.addPrimitive(
-        lambda *args: partial(antsim.if_food_right, *args), 2, name="ifFoodRight"
+        lambda *args: partial(predatorsim.if_prey_right, *args), 2, name="ifpreyRight"
     )
     # pset.addPrimitive(
-    #     lambda *args: partial(antsim.if_food_behind, *args), 2, name="ifFoodBehind"
+    #     lambda *args: partial(predatorsim.if_prey_behind, *args), 2, name="ifpreyBehind"
     # )
     pset.addPrimitive(lambda *args: partial(progn, *args), 2, name="prog2")
     pset.addPrimitive(lambda *args: partial(progn, *args), 3, name="prog3")
-    pset.addTerminal(antsim.forward, name="forward")
-    pset.addTerminal(antsim.left, name="left")
-    pset.addTerminal(antsim.right, name="right")
+    pset.addTerminal(predatorsim.forward, name="forward")
+    pset.addTerminal(predatorsim.left, name="left")
+    pset.addTerminal(predatorsim.right, name="right")
     return pset
 
 
@@ -230,23 +249,23 @@ def main() -> int:
     args = parser.parse_args()
     random.seed(args.random_seed)
 
-    config = parse_file("examples/santafe.txt")
+    config = parse_file("examples/spredatorafe.txt")
     ctx = Context(
         ncols=config["ncols"],
         nrows=config["nrows"],
-        foods=config["foods"],
+        preys=config["preys"],
         seed=args.random_seed,
     )
-    antsim = AntSimulator(
+    predatorsim = PredatorSimulator(
         ncols=config["ncols"],
         nrows=config["nrows"],
         startpos=config["startpos"],
         startdir=config["startdir"],
-        foods=config["foods"],
+        preys=config["preys"],
         max_moves=args.max_moves,
     )
 
-    pset = create_primitive_set(antsim)
+    pset = create_primitive_set(predatorsim)
 
     creator.create("Fitness", base.Fitness, weights=(1.0,))
     creator.create("Individual", gp.PrimitiveTree, fitness=creator.Fitness, steps=list)
@@ -256,7 +275,7 @@ def main() -> int:
         "individual", tools.initIterate, creator.Individual, toolbox.expr_init
     )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-    toolbox.register("evaluate", eval_artificial_ant, pset=pset, antsim=antsim, ctx=ctx)
+    toolbox.register("evaluate", eval_artificial_predator, pset=pset, predatorsim=predatorsim, ctx=ctx)
     if args.tournsize is not None:
         toolbox.register("select", tools.selTournament, tournsize=args.tournsize)
     else:
