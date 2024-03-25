@@ -46,6 +46,15 @@ def create_primitive_set(antsim: AntSimulator) -> gp.PrimitiveSet:
     pset.addPrimitive(
         lambda *args: partial(antsim.if_food_ahead, *args), 2, name="ifFoodAhead"
     )
+    pset.addPrimitive(
+        lambda *args: partial(antsim.if_food_left, *args), 2, name="ifFoodLeft"
+    )
+    pset.addPrimitive(
+        lambda *args: partial(antsim.if_food_right, *args), 2, name="ifFoodRight"
+    )
+    # pset.addPrimitive(
+    #     lambda *args: partial(antsim.if_food_behind, *args), 2, name="ifFoodBehind"
+    # )
     pset.addPrimitive(lambda *args: partial(progn, *args), 2, name="prog2")
     pset.addPrimitive(lambda *args: partial(progn, *args), 3, name="prog3")
     pset.addTerminal(antsim.forward, name="forward")

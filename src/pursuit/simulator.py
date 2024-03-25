@@ -103,15 +103,34 @@ class AntSimulator:
         self.moves.append("F")
         ctx.update(self)
 
-    def _has_food_ahead(self, ctx: "Context") -> bool:
+    def _has_food_ahead(self, ctx: "Context", turn_dir: complex = 1) -> bool:
+        d = self.dir * turn_dir
         next_pos = (
-            (self.pos[0] + int(self.dir.imag)) % self.nrows,
-            (self.pos[1] + int(self.dir.real)) % self.ncols,
+            (self.pos[0] + int(d.imag)) % self.nrows,
+            (self.pos[1] + int(d.real)) % self.ncols,
         )
         return next_pos in ctx.foods
 
     def if_food_ahead(self, out1, out2, *, ctx: "Context"):
         if self._has_food_ahead(ctx):
+            out1(ctx=ctx)
+        else:
+            out2(ctx=ctx)
+
+    def if_food_left(self, out1, out2, *, ctx: "Context"):
+        if self._has_food_ahead(ctx, turn_dir=-1j):
+            out1(ctx=ctx)
+        else:
+            out2(ctx=ctx)
+
+    def if_food_right(self, out1, out2, *, ctx: "Context"):
+        if self._has_food_ahead(ctx, turn_dir=1j):
+            out1(ctx=ctx)
+        else:
+            out2(ctx=ctx)
+
+    def if_food_behind(self, out1, out2, *, ctx: "Context"):
+        if self._has_food_ahead(ctx, turn_dir=-1 + 0j):
             out1(ctx=ctx)
         else:
             out2(ctx=ctx)
