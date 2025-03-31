@@ -15,7 +15,6 @@ This script takes an input file with a solution tree, executes the corresponding
 the simulation trace.
 """
 
-
 import sys
 import argparse
 from functools import partial
@@ -90,9 +89,9 @@ def parse_str(text: str):
     }
     prey_icon = "#"
 
-    assert (
-        sum(map(text.count, predator_icons.keys())) == 1
-    ), f"exactly one of {list(predator_icons.keys())} must be present in the environment"
+    assert sum(map(text.count, predator_icons.keys())) == 1, (
+        f"exactly one of {list(predator_icons.keys())} must be present in the environment"
+    )
     grid = [list(line) for line in map(str.strip, text.split("\n")) if line != ""]
     nrows = len(grid)
     ncols = len(grid[0]) if nrows > 0 else 0
@@ -125,7 +124,7 @@ def parse_file(filepath: str):
 
 def main() -> int:
     args = parser.parse_args()
-    config = parse_file("examples/spredatorafe.txt")
+    config = parse_file("examples/santafe.txt")
     ctx = Context(
         ncols=config["ncols"],
         nrows=config["nrows"],

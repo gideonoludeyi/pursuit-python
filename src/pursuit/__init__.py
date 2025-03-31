@@ -16,7 +16,6 @@ elitism-based evolutionary algorithm.
 The script also defines command-line argument parsing for configuration and control of the simulation run.
 """
 
-
 import argparse
 import itertools
 import os
@@ -39,9 +38,9 @@ def parse_str(text: str):
     }
     prey_icon = "#"
 
-    assert (
-        sum(map(text.count, predator_icons.keys())) == 1
-    ), f"exactly one of {list(predator_icons.keys())} must be present in the environment"
+    assert sum(map(text.count, predator_icons.keys())) == 1, (
+        f"exactly one of {list(predator_icons.keys())} must be present in the environment"
+    )
     grid = [list(line) for line in map(str.strip, text.split("\n")) if line != ""]
     nrows = len(grid)
     ncols = len(grid[0]) if nrows > 0 else 0
@@ -249,7 +248,7 @@ def main() -> int:
     args = parser.parse_args()
     random.seed(args.random_seed)
 
-    config = parse_file("examples/spredatorafe.txt")
+    config = parse_file("examples/santafe.txt")
     ctx = Context(
         ncols=config["ncols"],
         nrows=config["nrows"],
@@ -275,7 +274,13 @@ def main() -> int:
         "individual", tools.initIterate, creator.Individual, toolbox.expr_init
     )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-    toolbox.register("evaluate", eval_artificial_predator, pset=pset, predatorsim=predatorsim, ctx=ctx)
+    toolbox.register(
+        "evaluate",
+        eval_artificial_predator,
+        pset=pset,
+        predatorsim=predatorsim,
+        ctx=ctx,
+    )
     if args.tournsize is not None:
         toolbox.register("select", tools.selTournament, tournsize=args.tournsize)
     else:
